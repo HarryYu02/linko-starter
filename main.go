@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"flag"
-	"log"
 	"os"
 	"os/signal"
 	"syscall"
@@ -25,21 +24,18 @@ func main() {
 }
 
 func run(ctx context.Context, cancel context.CancelFunc, httpPort int, dataDir string) int {
-	logger := log.New(os.Stderr, "DEBUG: ", log.LstdFlags)
-
-	accessLogFile, err := os.OpenFile("linko.access.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
+	logger, err := initializeLogger()
 	if err != nil {
-		logger.Printf("failed to open linko.out.log: %v\n", err)
+		logger.Printf("failed to initialize logger: %v\n", err)
 		return 1
 	}
-	accessLogger := log.New(accessLogFile, "INFO: ", log.LstdFlags)
 
 	st, err := store.New(dataDir, logger)
 	if err != nil {
 		logger.Printf("failed to create store: %v\n", err)
 		return 1
 	}
-	s := newServer(*st, httpPort, cancel, accessLogger)
+	s := newServer(*st, httpPort, cancel, logger)
 	var serverErr error
 	go func() {
 		serverErr = s.start()
