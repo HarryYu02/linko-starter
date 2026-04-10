@@ -1,19 +1,18 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"os"
 )
 
-func initializeLogger() (*log.Logger, error) {
-	target := os.Getenv("LINKO_LOG_FILE")
+func initializeLogger(target string) (*log.Logger, error) {
 	if len(target) > 0 {
 		logFile, err := os.OpenFile(target, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0o644)
 		if err != nil {
-			log.Fatalf("failed to open %s: %v\n", target, err)
-			return nil, err
+			return nil, fmt.Errorf("failed to open %s: %v\n", target, err)
 		}
 		multiWriter := io.MultiWriter(os.Stderr, logFile)
 		logger := log.New(multiWriter, "", log.LstdFlags)
