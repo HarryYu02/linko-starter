@@ -25,15 +25,25 @@ func main() {
 }
 
 func run(ctx context.Context, cancel context.CancelFunc, httpPort int, dataDir string) int {
-	logger, err := initializeLogger(os.Getenv("LINKO_LOG_FILE"))
+	logger, closeFunc, err := initializeLogger(os.Getenv("LINKO_LOG_FILE"))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to initialize logger: %v\n", err)
 		return 1
 	}
+	defer func() {
+		err = closeFunc()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to cleanup logger: %v\n", err)
+			return
+		}
+	}()
 
 	st, err := store.New(dataDir, logger)
 	if err != nil {
-		logger.Printf("failed to create store: %v\n", err)
+		logger.Error(
+			"failed to create store",
+			"err", err,
+		)
 		return 1
 	}
 	s := newServer(*st, httpPort, cancel, logger)
@@ -47,11 +57,17 @@ func run(ctx context.Context, cancel context.CancelFunc, httpPort int, dataDir s
 	defer cancel()
 
 	if err := s.shutdown(shutdownCtx); err != nil {
-		s.logger.Printf("failed to shutdown server: %v\n", err)
+		s.logger.Error(
+			"failed to shutdown server",
+			"err", err,
+		)
 		return 1
 	}
 	if serverErr != nil {
-		s.logger.Printf("failed to shutdown server: %v\n", err)
+		s.logger.Error(
+			"failed to shutdown server",
+			"err", err,
+		)
 		return 1
 	}
 	return 0

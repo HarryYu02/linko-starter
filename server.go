@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -16,10 +16,10 @@ type server struct {
 	httpServer *http.Server
 	store      store.Store
 	cancel     context.CancelFunc
-	logger     *log.Logger
+	logger     *slog.Logger
 }
 
-func newServer(store store.Store, port int, cancel context.CancelFunc, logger *log.Logger) *server {
+func newServer(store store.Store, port int, cancel context.CancelFunc, logger *slog.Logger) *server {
 	mux := http.NewServeMux()
 
 	srv := &http.Server{
@@ -54,7 +54,10 @@ func (s *server) start() error {
 	if !ok {
 		return fmt.Errorf("server's address is not a *net.TCPAddr")
 	}
-	s.logger.Printf("Linko is running on http://localhost:%d\n", addr.Port)
+	s.logger.Debug(
+		"Linko is running on http://localhost",
+		"port", addr.Port,
+	)
 	if err := s.httpServer.Serve(ln); !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}
@@ -62,7 +65,7 @@ func (s *server) start() error {
 }
 
 func (s *server) shutdown(ctx context.Context) error {
-	s.logger.Printf("Linko is shutting down\n")
+	s.logger.Debug("Linko is shutting down")
 	return s.httpServer.Shutdown(ctx)
 }
 
