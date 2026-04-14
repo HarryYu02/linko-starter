@@ -4,11 +4,13 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
+	"boot.dev/linko/internal/build"
 	"boot.dev/linko/internal/store"
 )
 
@@ -38,11 +40,21 @@ func run(ctx context.Context, cancel context.CancelFunc, httpPort int, dataDir s
 		}
 	}()
 
+	env := os.Getenv("ENV")
+	hostname, _ := os.Hostname()
+
+	logger = logger.With(
+		slog.String("git_sha", build.GitSHA),
+		slog.String("build_time", build.BuildTime),
+		slog.String("env", env),
+		slog.String("hostname", hostname),
+	)
+
 	st, err := store.New(dataDir, logger)
 	if err != nil {
 		logger.Error(
 			"failed to create store",
-			"err", err,
+			"error", err,
 		)
 		return 1
 	}
@@ -59,14 +71,14 @@ func run(ctx context.Context, cancel context.CancelFunc, httpPort int, dataDir s
 	if err := s.shutdown(shutdownCtx); err != nil {
 		s.logger.Error(
 			"failed to shutdown server",
-			"err", err,
+			"error", err,
 		)
 		return 1
 	}
 	if serverErr != nil {
 		s.logger.Error(
 			"failed to shutdown server",
-			"err", err,
+			"error", err,
 		)
 		return 1
 	}

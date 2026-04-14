@@ -77,7 +77,7 @@ func (s *server) handlerRedirect(w http.ResponseWriter, r *http.Request) {
 		} else {
 			s.logger.Error(
 				"failed to lookup URL",
-				"err", err,
+				"error", err,
 			)
 			http.Error(w, "internal server error", http.StatusInternalServerError)
 		}
@@ -101,7 +101,7 @@ func (s *server) handlerListURLs(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.logger.Error(
 			"failed to list URLs",
-			"err", err,
+			"error", err,
 		)
 		http.Error(w, "failed to list URLs", http.StatusInternalServerError)
 		return
