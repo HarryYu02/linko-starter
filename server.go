@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -10,6 +11,7 @@ import (
 	"os"
 
 	"boot.dev/linko/internal/store"
+	pkgerr "github.com/pkg/errors"
 )
 
 type server struct {
@@ -19,12 +21,31 @@ type server struct {
 	logger     *slog.Logger
 }
 
+func requestIDMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		id := r.Header.Get("X-Request-ID")
+		if len(id) == 0 {
+			id = rand.Text()
+		}
+
+		w.Header().Set("X-Request-ID", id)
+		next.ServeHTTP(w, r)
+	})
+}
+
+func httpError(ctx context.Context, w http.ResponseWriter, status int, err error) {
+	if logCtx, ok := ctx.Value(logContextKey).(*LogContext); ok {
+		logCtx.Error = pkgerr.WithStack(err)
+	}
+	http.Error(w, err.Error(), status)
+}
+
 func newServer(store store.Store, port int, cancel context.CancelFunc, logger *slog.Logger) *server {
 	mux := http.NewServeMux()
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", port),
-		Handler: requestLogger(logger)(mux),
+		Handler: requestLogger(logger)(requestIDMiddleware(mux)),
 	}
 
 	s := &server{

@@ -1,7 +1,7 @@
 package main
 
 import (
-	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -11,8 +11,18 @@ import (
 	"time"
 
 	"boot.dev/linko/internal/linkoerr"
+	"github.com/lmittmann/tint"
+	"github.com/mattn/go-isatty"
 	pkgerr "github.com/pkg/errors"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
+
+const logContextKey contextKey = "log_context"
+
+type LogContext struct {
+	Username string
+	Error    error
+}
 
 type closeFunc func() error
 
@@ -94,26 +104,32 @@ func replaceAttr(groups []string, a slog.Attr) slog.Attr {
 }
 
 func initializeLogger(target string) (*slog.Logger, closeFunc, error) {
-	debugHandler := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+	debugHandler := tint.NewHandler(os.Stderr, &tint.Options{
 		Level: slog.LevelDebug,
 		ReplaceAttr: replaceAttr,
+		NoColor: !(isatty.IsCygwinTerminal(os.Stderr.Fd()) || isatty.IsTerminal(os.Stderr.Fd())),
 	})
 
 	if len(target) > 0 {
-		logFile, err := os.OpenFile(target, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0o644)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to open %s: %v\n", target, err)
+		handlers := make([]slog.Handler, 0)
+		handlers = append(handlers, debugHandler)
+
+		fileLogger := &lumberjack.Logger{
+			Filename:   target,
+			MaxSize:    1,
+			MaxAge:     28,
+			MaxBackups: 10,
+			LocalTime:  false,
+			Compress:   true,
 		}
-		bufferedFile := bufio.NewWriterSize(logFile, 8192)
-		infoHandler := slog.NewJSONHandler(bufferedFile, &slog.HandlerOptions{
+		handlers = append(handlers, slog.NewJSONHandler(fileLogger, &slog.HandlerOptions{
 			Level: slog.LevelInfo,
 			ReplaceAttr: replaceAttr,
-		})
+		}))
 		logger := slog.New(slog.NewMultiHandler(
-			debugHandler,
-			infoHandler,
+			handlers...
 		))
-		return logger, bufferedFile.Flush , nil
+		return logger, fileLogger.Close, nil
 	} else {
 		logger := slog.New(debugHandler)
 		return logger, func() error { return nil }, nil
@@ -129,17 +145,30 @@ func requestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 			r.Body = spyReader
 
 			spyWriter := &spyResponseWriter{ResponseWriter: w}
+			logContext := &LogContext{}
+			r = r.WithContext(context.WithValue(context.Background(), logContextKey, logContext))
 			next.ServeHTTP(spyWriter, r)
 
-			logger.Info(
-				"Served request",
-				"method", r.Method,
-				"path", r.URL.Path,
-				"client_ip", r.RemoteAddr,
+			attrs := []any{
+				slog.String("method", r.Method),
+				slog.String("path", r.URL.Path),
+				slog.String("client_ip", r.RemoteAddr),
 				slog.Duration("duration", time.Since(start)),
 				slog.Int("request_body_bytes", spyReader.bytesRead),
 				slog.Int("response_status", spyWriter.statusCode),
 				slog.Int("response_body_bytes", spyWriter.bytesWritten),
+				slog.String("request_id", r.Header.Get("X-Request-ID")),
+			}
+			if len(logContext.Username) > 0 {
+				attrs = append(attrs, slog.String("user", logContext.Username))
+			}
+			if logContext.Error != nil {
+				attrs = append(attrs, slog.Any("error", logContext.Error))
+			}
+
+			logger.Info(
+				"Served request",
+				attrs...
 			)
 		})
 	}
