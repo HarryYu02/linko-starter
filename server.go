@@ -37,7 +37,16 @@ func httpError(ctx context.Context, w http.ResponseWriter, status int, err error
 	if logCtx, ok := ctx.Value(logContextKey).(*LogContext); ok {
 		logCtx.Error = pkgerr.WithStack(err)
 	}
-	http.Error(w, err.Error(), status)
+	errStr := err.Error()
+	switch(status) {
+	case 401:
+		fallthrough
+	case 403:
+		fallthrough
+	case 500:
+		errStr = http.StatusText(status)
+	}
+	http.Error(w, errStr, status)
 }
 
 func newServer(store store.Store, port int, cancel context.CancelFunc, logger *slog.Logger) *server {

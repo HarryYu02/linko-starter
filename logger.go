@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"boot.dev/linko/internal/linkoerr"
@@ -136,6 +138,28 @@ func initializeLogger(target string) (*slog.Logger, closeFunc, error) {
 	}
 }
 
+func redactIP(address string) string {
+	host, _, err := net.SplitHostPort(address)
+	// Not valid ip
+	if err != nil {
+		return address
+	}
+	ip := net.ParseIP(host)
+	// Not valid ip
+	if ip == nil {
+		return address
+	}
+	// Not ipv-4
+	if ip.To4() == nil {
+		return address
+	}
+	octets := strings.Split(host, ".")
+	if len(octets) != 4 {
+		return address
+	}
+	return fmt.Sprintf("%s.%s.%s.x", octets[0], octets[1], octets[2])
+}
+
 func requestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -152,7 +176,7 @@ func requestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 			attrs := []any{
 				slog.String("method", r.Method),
 				slog.String("path", r.URL.Path),
-				slog.String("client_ip", r.RemoteAddr),
+				slog.String("client_ip", redactIP(r.RemoteAddr)),
 				slog.Duration("duration", time.Since(start)),
 				slog.Int("request_body_bytes", spyReader.bytesRead),
 				slog.Int("response_status", spyWriter.statusCode),
