@@ -8,7 +8,9 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -86,6 +88,20 @@ func errAttrs(err error) []slog.Attr {
 }
 
 func replaceAttr(groups []string, a slog.Attr) slog.Attr {
+	var sensitiveKeys = []string{"password", "key", "apikey", "secret", "pin", "creditcardno", "user"}
+	if slices.Contains(sensitiveKeys, a.Key) {
+		return slog.String(a.Key, "[REDACTED]")
+	}
+	// is a url
+	url, err := url.Parse(a.Value.String())
+	if err == nil {
+		user := url.User
+		password, ok := user.Password()
+		if ok {
+			redactedUrl := strings.Replace(url.String(), password, "[REDACTED]", -1)
+			return slog.String(a.Key, redactedUrl)
+		}
+	}
 	if a.Key == "error" {
 		err, ok := a.Value.Any().(error)
 		if !ok {
